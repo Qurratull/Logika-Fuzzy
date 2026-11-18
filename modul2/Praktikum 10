@@ -1,0 +1,199 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 1. FUNGSI KEANGGOTAAN
+
+def trapmf(x, a, b, c, d):
+    x = np.asarray(x, dtype=float)
+
+    left = np.ones_like(x) if a == b else np.clip((x-a)/(b-a), 0, 1)
+    right = np.where(x <= c, 1.0, 0.0) if c == d else np.clip((d-x)/(d-c), 0, 1)
+
+    return np.minimum(left, right)
+
+
+def trimf(x, a, b, c):
+    x = np.asarray(x, dtype=float)
+
+    return np.maximum(
+        0,
+        np.minimum(
+            np.clip((x-a)/(b-a), 0, 1),
+            np.clip((c-x)/(c-b), 0, 1)
+        )
+    )
+
+
+# 2. FUZZIFIKASI INPUT
+
+def fuzzy_kendaraan(x):
+    return {
+        'Sedikit': float(trapmf(x, 0, 0, 20, 50)),
+        'Sedang': float(trimf(x, 20, 50, 80)),
+        'Banyak': float(trapmf(x, 50, 80, 100, 100))
+    }
+
+
+def fuzzy_antrean(x):
+    return {
+        'Pendek': float(trapmf(x, 0, 0, 40, 100)),
+        'Sedang': float(trimf(x, 40, 100, 160)),
+        'Panjang': float(trapmf(x, 100, 160, 200, 200))
+    }
+
+
+def fuzzy_durasi(z):
+    return {
+        'Singkat': trapmf(z, 10, 10, 20, 35),
+        'Sedang': trimf(z, 20, 35, 50),
+        'Lama': trapmf(z, 35, 50, 60, 60)
+    }
+
+
+# 3. BASIS ATURAN (9 RULE)
+
+aturan = [
+    ('Sedikit', 'Pendek', 'Singkat'),
+    ('Sedikit', 'Sedang', 'Singkat'),
+    ('Sedikit', 'Panjang', 'Sedang'),
+    ('Sedang', 'Pendek', 'Singkat'),
+    ('Sedang', 'Sedang', 'Sedang'),
+    ('Sedang', 'Panjang', 'Lama'),
+    ('Banyak', 'Pendek', 'Sedang'),
+    ('Banyak', 'Sedang', 'Lama'),
+    ('Banyak', 'Panjang', 'Lama')
+]
+
+
+# 4. INFERENSI MAMDANI + CENTROID
+
+def evaluasi(kendaraan, antrean):
+    if not 0 <= kendaraan <= 100:
+        raise ValueError('Jumlah kendaraan harus 0-100')
+
+    if not 0 <= antrean <= 200:
+        raise ValueError('Panjang antrean harus 0-200 meter')
+
+    mu_k = fuzzy_kendaraan(kendaraan)
+    mu_a = fuzzy_antrean(antrean)
+
+    z = np.linspace(10, 60, 1001)
+    mu_z = fuzzy_durasi(z)
+
+    agregasi = np.zeros_like(z)
+    alpha_list = []
+
+    for k, a, hasil in aturan:
+        alpha = min(mu_k[k], mu_a[a])  # operator AND: MIN
+        alpha_list.append(alpha)
+
+        implikasi = np.minimum(alpha, mu_z[hasil])  # implikasi: MIN
+        agregasi = np.maximum(agregasi, implikasi)  # agregasi: MAX
+
+    luas = np.sum(agregasi)
+
+    if luas == 0:
+        raise ValueError('Tidak ada aturan fuzzy yang aktif')
+
+    centroid = np.sum(z * agregasi) / luas
+
+    kategori_mu = {
+        nama: float(mf(centroid))
+        for nama, mf in {
+            'Singkat': lambda x: trapmf(x, 10, 10, 20, 35),
+            'Sedang': lambda x: trimf(x, 20, 35, 50),
+            'Lama': lambda x: trapmf(x, 35, 50, 60, 60)
+        }.items()
+    }
+
+    kategori = max(kategori_mu, key=kategori_mu.get)
+
+    return centroid, kategori, z, agregasi, alpha_list
+
+
+# 5. PENGUJIAN 5 SKENARIO
+
+if __name__ == '__main__':
+
+    data_uji = [
+        (10, 30),
+        (30, 70),
+        (50, 100),
+        (75, 150),
+        (95, 190)
+    ]
+
+    print('=' * 72)
+    print('SISTEM PENGATURAN DURASI LAMPU HIJAU - MAMDANI')
+    print('=' * 72)
+
+    for no, (k, a) in enumerate(data_uji, 1):
+        hasil, kategori, z, agg, alpha = evaluasi(k, a)
+
+        print(f'{no}. Kendaraan={k}, antrean={a} m')
+        print(f'   Durasi={hasil:.2f} detik | Kategori={kategori}')
+
+
+# 6. INPUT DARI PENGGUNA DAN VALIDASI
+
+try:
+    k = float(input('Masukkan kendaraan (0-100): '))
+    a = float(input('Masukkan antrean (0-200 meter): '))
+
+    hasil, kategori, z, agg, alpha = evaluasi(k, a)
+
+    print(f'Durasi lampu hijau: {hasil:.2f} detik ({kategori})')
+
+except ValueError as error:
+    print('Input tidak valid:', error)
+
+
+# 7. GRAFIK AGREGASI
+
+plt.figure(figsize=(9, 5))
+
+plt.plot(z, agg, label='Kurva agregasi')
+
+plt.axvline(
+    hasil,
+    linestyle='--',
+    label=f'Centroid={hasil:.2f}'
+)
+
+plt.xlabel('Durasi lampu hijau (detik)')
+plt.ylabel('Derajat keanggotaan')
+plt.title('Grafik Agregasi Fuzzy Mamdani')
+
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+# 8. DECISION SURFACE 3D
+
+krange = np.linspace(0, 100, 25)
+arange = np.linspace(0, 200, 25)
+
+X, Y = np.meshgrid(krange, arange)
+Z = np.zeros_like(X)
+
+for i in range(X.shape[0]):
+    for j in range(X.shape[1]):
+        Z[i, j] = evaluasi(X[i, j], Y[i, j])[0]
+
+
+fig = plt.figure(figsize=(9, 6))
+
+ax = fig.add_subplot(111, projection='3d')
+
+ax.plot_surface(X, Y, Z, edgecolor='none')
+
+ax.set_xlabel('Jumlah kendaraan')
+ax.set_ylabel('Panjang antrean (meter)')
+ax.set_zlabel('Durasi hijau (detik)')
+
+ax.set_title('Decision Surface Durasi Lampu Hijau')
+
+plt.tight_layout()
+plt.show()
