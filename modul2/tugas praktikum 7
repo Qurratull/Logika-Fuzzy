@@ -1,0 +1,27 @@
+# 5. PENGUJIAN TIGA KASUS DAN VALIDASI INPUT
+# ----------------------------------------------------------
+if __name__ == "__main__":
+    kasus = [
+        {"kendaraan": 10, "antrean": 30},
+        {"kendaraan": 50, "antrean": 100},
+        {"kendaraan": 95, "antrean": 190},
+    ]
+    for i, data in enumerate(kasus, start=1):
+        durasi = fis.compute(data)
+        print(f"Kasus {i}")
+        print(f"  Jumlah kendaraan : {data['kendaraan']} kendaraan")
+        print(f"  Panjang antrean  : {data['antrean']} m")
+        print(f"  Durasi hijau     : {durasi:.2f} detik")
+        print("-" * 40)
+ 
+    print("Uji validasi input:")
+    for data in [{"kendaraan": -5, "antrean": 50},
+                 {"kendaraan": 50, "antrean": 250},
+                 {"kendaraan": float("nan"), "antrean": 50},
+                 {"kendaraan": "banyak", "antrean": 50},
+                 {"kendaraan": 50}]:
+        try:
+            fis.compute(data)
+        except (ValueError, TypeError) as e:
+            print(f"  Input: {data}")
+            print(f"    -> {type(e).__name__}: {e}")
