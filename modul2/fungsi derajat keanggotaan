@@ -1,0 +1,110 @@
+# ==========================================================
+# PERTEMUAN 6 - ATURAN FUZZY DAN KNOWLEDGE BASE
+# Topik: Pengaturan Durasi Lampu Hijau Lalu Lintas
+# ==========================================================
+import math
+
+# ----------------------------------------------------------
+# 1. DOMAIN VARIABEL (asumsi simulasi, bukan standar resmi)
+# ----------------------------------------------------------
+DOMAIN = {
+    "kendaraan": (0, 100),   # kendaraan pada zona deteksi pendekat
+    "antrean":   (0, 200),   # meter
+}
+
+# ----------------------------------------------------------
+# 2. FUNGSI KEANGGOTAAN
+# ----------------------------------------------------------
+def trapesium(x, a, b, c, d):
+    """Trapesium [a,b,c,d]; bahu kiri bila a==b, kanan bila c==d."""
+    if b <= x <= c:
+        return 1.0
+    if a <= x < b:
+        return (x - a) / (b - a)
+    if c < x <= d:
+        return (d - x) / (d - c)
+    return 0.0
+
+def segitiga(x, a, b, c):
+    """Segitiga [a, b, c] = trapesium dengan b == c pada puncak."""
+    return trapesium(x, a, b, b, c)
+
+# Parameter himpunan fuzzy
+kendaraan = {
+    "sedikit": ("trap", (0, 0, 20, 50)),
+    "sedang":  ("tri",  (20, 50, 80)),
+    "banyak":  ("trap", (50, 80, 100, 100)),
+}
+antrean = {
+    "pendek":  ("trap", (0, 0, 40, 100)),
+    "sedang":  ("tri",  (40, 100, 160)),
+    "panjang": ("trap", (100, 160, 200, 200)),
+}
+
+def derajat(x, himpunan):
+    hasil = {}
+    for nama, (jenis, p) in himpunan.items():
+        if jenis == "trap":
+            hasil[nama] = trapesium(x, *p)
+        else:
+            hasil[nama] = segitiga(x, *p)
+    return hasil
+
+# ----------------------------------------------------------
+# 3. VALIDASI INPUT TERHADAP DOMAIN
+# ----------------------------------------------------------
+def validasi(nama, nilai):
+    lo, hi = DOMAIN[nama]
+    if isinstance(nilai, bool) or not isinstance(nilai, (int, float)):
+        raise TypeError(f"Input {nama} harus berupa angka.")
+    if not math.isfinite(nilai):
+        raise ValueError(f"Input {nama} tidak valid (NaN/tak hingga).")
+    if not (lo <= nilai <= hi):
+        raise ValueError(
+            f"Input {nama} = {nilai} di luar domain [{lo}, {hi}].")
+    return float(nilai)
+
+# ----------------------------------------------------------
+# 4. BASIS ATURAN (3 x 3 = 9 aturan, lengkap)
+# ----------------------------------------------------------
+aturan = [
+    ("R1", "sedikit", "pendek",  "singkat"),
+    ("R2", "sedikit", "sedang",  "singkat"),
+    ("R3", "sedikit", "panjang", "sedang"),
+    ("R4", "sedang",  "pendek",  "singkat"),
+    ("R5", "sedang",  "sedang",  "sedang"),
+    ("R6", "sedang",  "panjang", "lama"),
+    ("R7", "banyak",  "pendek",  "sedang"),
+    ("R8", "banyak",  "sedang",  "lama"),
+    ("R9", "banyak",  "panjang", "lama"),
+]
+
+def evaluasi(jumlah_kendaraan, panjang_antrean):
+    v = validasi("kendaraan", jumlah_kendaraan)
+    q = validasi("antrean", panjang_antrean)
+    mu_v, mu_q = derajat(v, kendaraan), derajat(q, antrean)
+    print("=== DERAJAT KEANGGOTAAN ===")
+    print("Kendaraan:", {k: round(x, 3) for k, x in mu_v.items()})
+    print("Antrean  :", {k: round(x, 3) for k, x in mu_q.items()})
+    print("\n=== HASIL EVALUASI ATURAN ===")
+    aktif = []
+    for kode, lv, lq, hasil in aturan:
+        alpha = min(mu_v[lv], mu_q[lq])
+        if alpha > 0:
+            aktif.append((kode, hasil, alpha))
+            print(f"{kode}: durasi hijau {hasil.upper()}, "
+                  f"firing strength = {alpha:.3f}")
+    if not aktif:
+        raise ValueError("Tidak ada aturan aktif.")
+    return aktif
+
+if __name__ == "__main__":
+    skenario = {
+        "A (lengang)": (10, 60),
+        "B (padat sedang)": (65, 120),
+        "C (kritis)": (95, 190),
+    }
+    for nama, (v, q) in skenario.items():
+        print(f"\n##### Skenario {nama}: {v} kendaraan, "
+              f"antrean {q} m #####")
+        evaluasi(v, q)
