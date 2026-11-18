@@ -1,68 +1,132 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
 # Fungsi keanggotaan trapesium dan segitiga
 def trapmf(x, a, b, c, d):
-x = np.asarray(x, dtype=float)
-left = np.ones_like(x) if a == b else np.clip((x-a)/(b-a), 0, 1)
-right = np.where(x <= c, 1.0, 0.0) if c == d else np.clip((d-x)/(d-c), 0, 1)
-return np.minimum(left, right)
-def trimf(x, a, b, c):
-x = np.asarray(x, dtype=float)
-left = np.clip((x-a)/(b-a), 0, 1)
-right = np.clip((c-x)/(c-b), 0, 1)
-return np.maximum(0, np.minimum(left, right))
-def fuzzifikasi_kendaraan(x):
-return {'Sedikit': float(trapmf(x,0,0,20,50)),
-'Sedang': float(trimf(x,20,50,80)),
-'Banyak': float(trapmf(x,50,80,100,100))}
-def fuzzifikasi_antrean(x):
-return {'Pendek': float(trapmf(x,0,0,40,100)),
-'Sedang': float(trimf(x,40,100,160)),
-'Panjang': float(trapmf(x,100,160,200,200))}
-aturan = [
-('Sedikit','Pendek','Singkat'), ('Sedikit','Sedang','Singkat'),
-('Sedikit','Panjang','Sedang'), ('Sedang','Pendek','Singkat'),
-('Sedang','Sedang','Sedang'), ('Sedang','Panjang','Lama'),
-('Banyak','Pendek','Sedang'), ('Banyak','Sedang','Lama'),
-('Banyak','Panjang','Lama')]
-def evaluasi(kendaraan, antrean):
-if not 0 <= kendaraan <= 100:
-raise ValueError('Kendaraan harus 0 sampai 100')
-if not 0 <= antrean <= 200:
-raise ValueError('Antrean harus 0 sampai 200 meter')
-mu_k = fuzzifikasi_kendaraan(kendaraan)
-mu_a = fuzzifikasi_antrean(antrean)
-z = np.linspace(10, 60, 5001)
-output = {
-'Singkat': trapmf(z,10,10,20,35),
-'Sedang': trimf(z,20,35,50),
-'Lama': trapmf(z,35,50,60,60)}
-agregasi = np.zeros_like(z)
-print('DERAJAT KEANGGOTAAN INPUT')
-print('Kendaraan:', mu_k)
-print('Antrean :', mu_a)
-print('FIRING STRENGTH')
-for i,(a,b,c) in enumerate(aturan,1):
-alpha = min(mu_k[a], mu_a[b])
-print(f'R{i}: {alpha:.3f} -> {c}')
-agregasi = np.maximum(agregasi, np.minimum(alpha, output[c]))
-if agregasi.sum() == 0:
-raise ValueError('Tidak ada aturan fuzzy yang aktif')
-centroid = np.sum(z*agregasi)/np.sum(agregasi)
-luas_kumulatif = np.cumsum(agregasi)
-bisector = z[np.searchsorted(luas_kumulatif, luas_kumulatif[-1]/2)]
-indeks = np.where(np.isclose(agregasi, agregasi.max()))[0]
-mom = np.mean(z[indeks]); som = z[indeks[0]]; lom = z[indeks[-1]]
-hasil = {'Centroid':centroid, 'Bisector':bisector,
-'MOM':mom, 'SOM':som, 'LOM':lom}
-print('\nHASIL DEFUZZIFIKASI')
-for nama,nilai in hasil.items():
-print(f'{nama:<10}: {nilai:.2f} detik')
-plt.plot(z, agregasi, label='Agregasi fuzzy')
-plt.axvline(centroid, linestyle='--', label=f'Centroid {centroid:.2f}')
-plt.xlabel('Durasi lampu hijau (detik)')
-plt.ylabel('Derajat keanggotaan')
-plt.title('Agregasi Mamdani dan Defuzzifikasi')
-plt.grid(True); plt.legend(); plt.show()
-return hasil
+    x = np.asarray(x, dtype=float)
+    left = np.ones_like(x) if a == b else np.clip((x-a)/(b-a), 0, 1)
+    right = np.where(x <= c, 1.0, 0.0) if c == d else np.clip((d-x)/(d-c), 0, 1)
+    return np.minimum(left, right)
 
+
+def trimf(x, a, b, c):
+    x = np.asarray(x, dtype=float)
+    left = np.clip((x-a)/(b-a), 0, 1)
+    right = np.clip((c-x)/(c-b), 0, 1)
+    return np.maximum(0, np.minimum(left, right))
+
+
+def fuzzifikasi_kendaraan(x):
+    return {
+        'Sedikit': float(trapmf(x, 0, 0, 20, 50)),
+        'Sedang': float(trimf(x, 20, 50, 80)),
+        'Banyak': float(trapmf(x, 50, 80, 100, 100))
+    }
+
+
+def fuzzifikasi_antrean(x):
+    return {
+        'Pendek': float(trapmf(x, 0, 0, 40, 100)),
+        'Sedang': float(trimf(x, 40, 100, 160)),
+        'Panjang': float(trapmf(x, 100, 160, 200, 200))
+    }
+
+
+aturan = [
+    ('Sedikit', 'Pendek', 'Singkat'),
+    ('Sedikit', 'Sedang', 'Singkat'),
+    ('Sedikit', 'Panjang', 'Sedang'),
+    ('Sedang', 'Pendek', 'Singkat'),
+    ('Sedang', 'Sedang', 'Sedang'),
+    ('Sedang', 'Panjang', 'Lama'),
+    ('Banyak', 'Pendek', 'Sedang'),
+    ('Banyak', 'Sedang', 'Lama'),
+    ('Banyak', 'Panjang', 'Lama')
+]
+
+
+def evaluasi(kendaraan, antrean):
+    if not 0 <= kendaraan <= 100:
+        raise ValueError('Kendaraan harus 0 sampai 100')
+
+    if not 0 <= antrean <= 200:
+        raise ValueError('Antrean harus 0 sampai 200 meter')
+
+    mu_k = fuzzifikasi_kendaraan(kendaraan)
+    mu_a = fuzzifikasi_antrean(antrean)
+
+    z = np.linspace(10, 60, 5001)
+
+    output = {
+        'Singkat': trapmf(z, 10, 10, 20, 35),
+        'Sedang': trimf(z, 20, 35, 50),
+        'Lama': trapmf(z, 35, 50, 60, 60)
+    }
+
+    agregasi = np.zeros_like(z)
+
+    print('DERAJAT KEANGGOTAAN INPUT')
+    print('Kendaraan:', mu_k)
+    print('Antrean :', mu_a)
+
+    print('FIRING STRENGTH')
+
+    for i, (a, b, c) in enumerate(aturan, 1):
+        alpha = min(mu_k[a], mu_a[b])
+        print(f'R{i}: {alpha:.3f} -> {c}')
+
+        agregasi = np.maximum(
+            agregasi,
+            np.minimum(alpha, output[c])
+        )
+
+    if agregasi.sum() == 0:
+        raise ValueError('Tidak ada aturan fuzzy yang aktif')
+
+    centroid = np.sum(z * agregasi) / np.sum(agregasi)
+
+    luas_kumulatif = np.cumsum(agregasi)
+
+    bisector = z[
+        np.searchsorted(
+            luas_kumulatif,
+            luas_kumulatif[-1] / 2
+        )
+    ]
+
+    indeks = np.where(np.isclose(agregasi, agregasi.max()))[0]
+
+    mom = np.mean(z[indeks])
+    som = z[indeks[0]]
+    lom = z[indeks[-1]]
+
+    hasil = {
+        'Centroid': centroid,
+        'Bisector': bisector,
+        'MOM': mom,
+        'SOM': som,
+        'LOM': lom
+    }
+
+    print('\nHASIL DEFUZZIFIKASI')
+
+    for nama, nilai in hasil.items():
+        print(f'{nama:<10}: {nilai:.2f} detik')
+
+    plt.plot(z, agregasi, label='Agregasi fuzzy')
+
+    plt.axvline(
+        centroid,
+        linestyle='--',
+        label=f'Centroid {centroid:.2f}'
+    )
+
+    plt.xlabel('Durasi lampu hijau (detik)')
+    plt.ylabel('Derajat keanggotaan')
+    plt.title('Agregasi Mamdani dan Defuzzifikasi')
+
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    return hasil
