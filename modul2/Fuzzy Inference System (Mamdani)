@@ -1,0 +1,182 @@
+# ==========================================================
+# PERTEMUAN 7 - FUZZY INFERENCE SYSTEM (MAMDANI)
+# Topik: Pengaturan Durasi Lampu Hijau Lalu Lintas
+# ==========================================================
+import math
+import numpy as np
+
+# ----------------------------------------------------------
+# 1. FUNGSI KEANGGOTAAN
+# ----------------------------------------------------------
+def trimf(x, params):
+    """Segitiga [a, b, c]."""
+    a, b, c = params
+    x = np.asarray(x, dtype=float)
+    y = np.zeros_like(x)
+    if b > a:
+        idx = (x >= a) & (x <= b)
+        y[idx] = (x[idx] - a) / (b - a)
+    if c > b:
+        idx = (x > b) & (x <= c)
+        y[idx] = (c - x[idx]) / (c - b)
+    y[x == b] = 1.0
+    return np.clip(y, 0.0, 1.0)
+
+def trapmf(x, params):
+    """Trapesium [a, b, c, d]."""
+    a, b, c, d = params
+    x = np.asarray(x, dtype=float)
+    y = np.zeros_like(x)
+    if b > a:
+        idx = (x >= a) & (x < b)
+        y[idx] = (x[idx] - a) / (b - a)
+    y[(x >= b) & (x <= c)] = 1.0
+    if d > c:
+        idx = (x > c) & (x <= d)
+        y[idx] = (d - x[idx]) / (d - c)
+    return np.clip(y, 0.0, 1.0)
+
+# ----------------------------------------------------------
+# 2. KELAS FUZZY INFERENCE SYSTEM
+# ----------------------------------------------------------
+class FuzzyInferenceSystem:
+    def __init__(self):
+        self.inputs = {}
+        self.output = None
+        self.rules = []
+
+    def add_input_variable(self, name, universe, mf_dict):
+        self.inputs[name] = {
+            "universe": np.asarray(universe, dtype=float),
+            "mf": mf_dict}
+
+    def set_output_variable(self, name, universe, mf_dict):
+        self.output = {"name": name,
+                       "universe": np.asarray(universe, dtype=float),
+                       "mf": mf_dict}
+
+    def add_rule(self, rule_tuple):
+        self.rules.append(rule_tuple)
+
+    def _validasi(self, input_values):
+        if self.output is None or not self.rules:
+            raise ValueError("Output atau basis aturan belum dibuat.")
+        if set(input_values) != set(self.inputs):
+            raise ValueError("Input tidak sesuai variabel terdaftar.")
+        for name, value in input_values.items():
+            angka = (int, float, np.integer, np.floating)
+            if isinstance(value, bool) or not isinstance(value, angka):
+                raise TypeError(f"Input {name} harus berupa angka.")
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"Input {name} tidak valid (NaN/tak hingga).")
+            u = self.inputs[name]["universe"]
+            if value < u[0] or value > u[-1]:
+                raise ValueError(
+                    f"Input {name} = {value} di luar domain "
+                    f"[{u[0]:g}, {u[-1]:g}].")
+
+    def compute(self, input_values, detail=False):
+        self._validasi(input_values)
+
+        # Tahap 1: fuzzifikasi
+        fuzzified = {}
+        for name, value in input_values.items():
+            var = self.inputs[name]
+            u = var["universe"]
+            fuzzified[name] = {
+                label: float(np.interp(value, u, mf))
+                for label, mf in var["mf"].items()}
+
+        # Tahap 2-3: evaluasi aturan (MIN), implikasi (clipping),
+        # dan agregasi (MAX)
+        z = self.output["universe"]
+        aggregated = np.zeros_like(z)
+        alphas = []
+        for i, (antecedents, consequent) in enumerate(self.rules, 1):
+            alpha = min(fuzzified[v][l] for v, l in antecedents)
+            alphas.append((f"R{i}", consequent, alpha))
+            implied = np.minimum(alpha, self.output["mf"][consequent])
+            aggregated = np.maximum(aggregated, implied)
+
+        # Tahap 4: defuzzifikasi centroid
+        area = np.trapezoid(aggregated, z)
+        if area <= 0:
+            raise ValueError("Tidak ada aturan aktif. Periksa fungsi "
+                             "keanggotaan dan basis aturan.")
+        crisp = float(np.trapezoid(z * aggregated, z) / area)
+        if detail:
+            return crisp, fuzzified, alphas, aggregated
+        return crisp
+
+# ----------------------------------------------------------
+# 3. DOMAIN DAN FUNGSI KEANGGOTAAN (asumsi simulasi)
+# ----------------------------------------------------------
+# Jumlah kendaraan: 0-100 kendaraan
+x1 = np.linspace(0, 100, 1001)
+mf_kendaraan = {
+    "Sedikit": trapmf(x1, [0, 0, 20, 50]),
+    "Sedang":  trimf(x1, [20, 50, 80]),
+    "Banyak":  trapmf(x1, [50, 80, 100, 100]),
+}
+# Panjang antrean: 0-200 meter
+x2 = np.linspace(0, 200, 2001)
+mf_antrean = {
+    "Pendek":  trapmf(x2, [0, 0, 40, 100]),
+    "Sedang":  trimf(x2, [40, 100, 160]),
+    "Panjang": trapmf(x2, [100, 160, 200, 200]),
+}
+# Durasi lampu hijau: 10-60 detik
+z = np.linspace(10, 60, 501)
+mf_durasi = {
+    "Singkat": trapmf(z, [10, 10, 20, 35]),
+    "Sedang":  trimf(z, [20, 35, 50]),
+    "Lama":    trapmf(z, [35, 50, 60, 60]),
+}
+
+# ----------------------------------------------------------
+# 4. MEMBANGUN SISTEM DAN BASIS ATURAN
+# ----------------------------------------------------------
+fis = FuzzyInferenceSystem()
+fis.add_input_variable("kendaraan", x1, mf_kendaraan)
+fis.add_input_variable("antrean", x2, mf_antrean)
+fis.set_output_variable("durasi_hijau", z, mf_durasi)
+
+tabel_aturan = [
+    ("Sedikit", "Pendek", "Singkat"), ("Sedikit", "Sedang", "Singkat"),
+    ("Sedikit", "Panjang", "Sedang"), ("Sedang", "Pendek", "Singkat"),
+    ("Sedang", "Sedang", "Sedang"),   ("Sedang", "Panjang", "Lama"),
+    ("Banyak", "Pendek", "Sedang"),   ("Banyak", "Sedang", "Lama"),
+    ("Banyak", "Panjang", "Lama"),
+]
+for lv, lq, hasil in tabel_aturan:
+    fis.add_rule(([("kendaraan", lv), ("antrean", lq)], hasil))
+
+# ----------------------------------------------------------
+# 5. PENGUJIAN TIGA KASUS DAN VALIDASI INPUT
+# ----------------------------------------------------------
+if __name__ == "__main__":
+    kasus = [
+        {"kendaraan": 10, "antrean": 30},
+        {"kendaraan": 50, "antrean": 100},
+        {"kendaraan": 95, "antrean": 190},
+    ]
+    for i, data in enumerate(kasus, start=1):
+        durasi = fis.compute(data)
+        print(f"Kasus {i}")
+        print(f"  Jumlah kendaraan : {data['kendaraan']} kendaraan")
+        print(f"  Panjang antrean  : {data['antrean']} m")
+        print(f"  Durasi hijau     : {durasi:.2f} detik")
+        print("-" * 40)
+
+    print("Uji validasi input:")
+    for data in [{"kendaraan": -5, "antrean": 50},
+                 {"kendaraan": 50, "antrean": 250},
+                 {"kendaraan": float("nan"), "antrean": 50},
+                 {"kendaraan": "banyak", "antrean": 50},
+                 {"kendaraan": 50}]:
+        try:
+            fis.compute(data)
+        except (ValueError, TypeError) as e:
+            print(f"  Input: {data}")
+            print(f"    -> {type(e).__name__}: {e}")
